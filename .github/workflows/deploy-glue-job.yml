@@ -1,49 +1,49 @@
-name: Deploy Glue Job on Push
- 
+name: Update Glue Job
+
 on:
   push:
     branches:
       - main
- 
+
 jobs:
-  deploy:
+  update-glue-job:
     runs-on: ubuntu-latest
- 
+
+    env:
+      GLUE_ROLE_ARN: ${{ secrets.GLUE_ROLE_ARN }}
+      GLUE_JOB_NAME: my-etl-job
+      SCRIPT_S3_PATH: s3://glue-job-scripts-test-abhay/glue-scripts/glue-job/${{ github.run_id }}-job.py
+
     steps:
-      - name: Step 1 - Checkout code
-        uses: actions/checkout@v4
- 
-      - name: Step 2 - Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
- 
-      - name: Step 3 - Install jq
+          aws-region: us-east-1
+
+      - name: Upload Glue script to S3
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
- 
-      - name: Step 4 - Upload script to S3 and update Glue job
+          aws s3 cp glue_jobs/my_etl_job.py "$SCRIPT_S3_PATH"
+
+      - name: Build job update JSON
         run: |
-          set -e  # Exit immediately if a command exits with a non-zero status
- 
-          JOB_NAME="glue-job"
-          SCRIPT_FILE="glue_jobs/my_etl_job.py"
-          S3_BUCKET="glue-job-scripts-test-abhay"
-          TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          S3_KEY="glue-scripts/${JOB_NAME}/${TIMESTAMP}-job.py"
-          SCRIPT_S3_PATH="s3://$S3_BUCKET/$S3_KEY"
- 
-          echo "Uploading script to S3..."
-          aws s3 cp "$SCRIPT_FILE" "$SCRIPT_S3_PATH"
- 
-          echo "Building JSON for Glue job update..."
-          JOB_UPDATE=$(jq -n --arg script "$SCRIPT_S3_PATH" \
-            '{Command: {Name: "glueetl", ScriptLocation: $script}}')
- 
-          echo "Updating Glue job..."
-          aws glue update-job --job-name "$JOB_NAME" --job-update "$JOB_UPDATE"
- 
-          echo "Glue job updated successfully with script at: $SCRIPT_S3_PATH"
+          cat <<EOF > job-update.json
+          {
+            "Role": "${GLUE_ROLE_ARN}",
+            "Command": {
+              "Name": "glueetl",
+              "ScriptLocation": "${SCRIPT_S3_PATH}",
+              "PythonVersion": "3"
+            }
+          }
+          EOF
+
+      - name: Update Glue job
+        run: |
+          aws glue update-job \
+            --job-name "$GLUE_JOB_NAME" \
+            --job-update file://job-update.json
