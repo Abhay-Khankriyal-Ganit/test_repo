@@ -19,7 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up AWS CLI
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -32,16 +32,14 @@ jobs:
 
       - name: Build job update JSON
         run: |
-          cat <<EOF > job-update.json
-{
-  "Role": "${GLUE_ROLE_ARN}",
-  "Command": {
-    "Name": "glueetl",
-    "ScriptLocation": "${SCRIPT_S3_PATH}",
-    "PythonVersion": "3"
-  }
-}
-EOF
+          echo '{
+            "Role": "'"${GLUE_ROLE_ARN}"'",
+            "Command": {
+              "Name": "glueetl",
+              "ScriptLocation": "'"${SCRIPT_S3_PATH}"'",
+              "PythonVersion": "3"
+            }
+          }' > job-update.json
 
       - name: Debug - show job-update.json content
         run: cat job-update.json
