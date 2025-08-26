@@ -13,6 +13,7 @@ jobs:
       GLUE_ROLE_ARN: ${{ secrets.GLUE_ROLE_ARN }}
       GLUE_JOB_NAME: my-etl-job
       SCRIPT_S3_PATH: s3://glue-job-scripts-test-abhay/glue-scripts/glue-job/${{ github.run_id }}-job.py
+      AWS_REGION: ${{ secrets.AWS_REGION }}
 
     steps:
       - name: Checkout repository
@@ -23,7 +24,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Upload Glue script to S3
         run: |
@@ -32,15 +33,21 @@ jobs:
       - name: Build job update JSON
         run: |
           cat <<EOF > job-update.json
-          {
-            "Role": "${GLUE_ROLE_ARN}",
-            "Command": {
-              "Name": "glueetl",
-              "ScriptLocation": "${SCRIPT_S3_PATH}",
-              "PythonVersion": "3"
-            }
-          }
-          EOF
+{
+  "Role": "${GLUE_ROLE_ARN}",
+  "Command": {
+    "Name": "glueetl",
+    "ScriptLocation": "${SCRIPT_S3_PATH}",
+    "PythonVersion": "3"
+  }
+}
+EOF
+
+      - name: Debug - show job-update.json content
+        run: cat job-update.json
+
+      - name: Debug - show AWS identity
+        run: aws sts get-caller-identity
 
       - name: Update Glue job
         run: |
