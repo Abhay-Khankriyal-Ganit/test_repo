@@ -1,0 +1,41 @@
+name: Deploy Glue Job on Push
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Step 1 - Checkout code
+        uses: actions/checkout@v4
+
+      - name: Step 2 - Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Step 3 - Upload script to S3 and update Glue job
+        run: |
+          JOB_NAME="glue-job"
+          SCRIPT_FILE="glue_jobs/my_etl_job.py"
+          S3_BUCKET="glue-job-scripts-test-abhay"
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          S3_KEY="glue-scripts/${JOB_NAME}/${TIMESTAMP}-job.py"
+          SCRIPT_S3_PATH="s3://$S3_BUCKET/$S3_KEY"
+
+          echo "Uploading script to S3..."
+          aws s3 cp "$SCRIPT_FILE" "$SCRIPT_S3_PATH"
+
+          echo "Updating Glue job to use new script..."
+          aws glue update-job --job-name "$JOB_NAME" --job-update '{
+            "Command": {
+              "Name": "glueetl",
+              "ScriptLocation": "'"$SCRIPT_S3_PATH"'"
+            }
+          }'
