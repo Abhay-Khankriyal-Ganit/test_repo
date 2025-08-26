@@ -11,9 +11,9 @@ jobs:
 
     env:
       GLUE_ROLE_ARN: ${{ secrets.GLUE_ROLE_ARN }}
-      GLUE_JOB_NAME: my-etl-job
+      GLUE_JOB_NAME: glue-job
       SCRIPT_S3_PATH: s3://glue-job-scripts-test-abhay/glue-scripts/glue-job/${{ github.run_id }}-job.py
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_REGION: ap-south-1
 
     steps:
       - name: Checkout repository
@@ -24,7 +24,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Upload Glue script to S3
         run: |
@@ -51,4 +51,5 @@ jobs:
         run: |
           aws glue update-job \
             --job-name "$GLUE_JOB_NAME" \
-            --job-update file://job-update.json
+            --job-update file://job-update.json \
+            --region "$AWS_REGION"
