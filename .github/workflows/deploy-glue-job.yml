@@ -2,10 +2,10 @@
         run: |
           JOB_NAME="${{ matrix.job }}"
           SCRIPT_S3_PATH="s3://${S3_BUCKET}/${SCRIPT_PREFIX}${{ github.run_id }}/${JOB_NAME}.py"
- 
+
           echo "Processing Glue job: $JOB_NAME"
           echo "Script path: $SCRIPT_S3_PATH"
- 
+
           # Build job definition
           cat > job-config.json <<EOF
 {
@@ -24,7 +24,7 @@
   "WorkerType": "G.1X"
 }
 EOF
- 
+
           # Check if job exists
           if aws glue get-job --job-name "$JOB_NAME" >/dev/null 2>&1; then
             echo "Updating Glue job: $JOB_NAME"
@@ -45,3 +45,4 @@ EOF
               --worker-type G.1X \
               --region "$AWS_REGION"
           fi
+ 
