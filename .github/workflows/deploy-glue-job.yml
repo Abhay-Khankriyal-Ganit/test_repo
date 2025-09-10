@@ -66,27 +66,20 @@ jobs:
           echo "Processing Glue job: $JOB_NAME"
           echo "Script path: $SCRIPT_S3_PATH"
  
+          # Try to find template in possible locations
+          if [ -f "glue_jobs/job-config-template.json" ]; then
+            TEMPLATE_PATH="glue_jobs/job-config-template.json"
+          elif [ -f "job-config-template.json" ]; then
+            TEMPLATE_PATH="job-config-template.json"
+          else
+            echo "ERROR: job-config-template.json not found in repo"
+            exit 1
+          fi
+ 
           # Copy template and replace variables
-          cp glue_jobs/job-config-template.json job-config.json
+          cp "$TEMPLATE_PATH" job-config.json
           sed -i "s|\${GLUE_ROLE_ARN}|${GLUE_ROLE_ARN}|g" job-config.json
           sed -i "s|\${SCRIPT_S3_PATH}|${SCRIPT_S3_PATH}|g" job-config.json
  
           # Check if job exists
-          if aws glue get-job --job-name "$JOB_NAME" >/dev/null 2>&1; then
-            echo "Updating Glue job: $JOB_NAME"
-            aws glue update-job \
-              --job-name "$JOB_NAME" \
-              --job-update file://job-config.json \
-              --region "$AWS_REGION"
-          else
-            echo "Creating Glue job: $JOB_NAME"
-            aws glue create-job \
-              --name "$JOB_NAME" \
-              --role "$GLUE_ROLE_ARN" \
-              --command "Name=glueetl,ScriptLocation=${SCRIPT_S3_PATH},PythonVersion=3" \
-              --execution-property "MaxConcurrentRuns=1" \
-              --max-retries 0 \
-              --glue-version "3.0" \
-              --number-of-workers 2 \
-              --worker-type G.1X \
-              --region "$AWS_REGION"
+          if aws glue ge
