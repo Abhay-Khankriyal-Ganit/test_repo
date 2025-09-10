@@ -1,3 +1,59 @@
+name: Update or Create Glue Jobs
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  discover-jobs:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - id: set-matrix
+        run: |
+          # Extract job names from Python files in glue_jobs/
+          jobs=$(ls glue_jobs/*.py | xargs -n1 basename | sed 's/\.py$//' | jq -R -s -c 'split("\n")[:-1]')
+          echo "matrix={\"job\": $jobs}" >> $GITHUB_OUTPUT
+
+  update-or-create-glue-job:
+    needs: discover-jobs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.discover-jobs.outputs.matrix) }}
+    env:
+      GLUE_ROLE_ARN: ${{ secrets.GLUE_ROLE_ARN }}
+      AWS_REGION: ap-south-1
+      S3_BUCKET: glue-job-scripts-test-abhay
+      SCRIPT_PREFIX: glue-scripts/glue-job/
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Ensure S3 bucket exists
+        run: |
+          if ! aws s3 ls "s3://${S3_BUCKET}" 2>/dev/null; then
+            echo "S3 bucket ${S3_BUCKET} does not exist. Creating..."
+            aws s3 mb "s3://${S3_BUCKET}" --region "${AWS_REGION}"
+          else
+            echo "S3 bucket ${S3_BUCKET} already exists."
+          fi
+
+      - name: Sync Glue scripts to S3
+        run: |
+          aws s3 sync glue_jobs/ "s3://${S3_BUCKET}/${SCRIPT_PREFIX}${{ github.run_id }}/"
+
       - name: Create or Update Glue job
         run: |
           JOB_NAME="${{ matrix.job }}"
