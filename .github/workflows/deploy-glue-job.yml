@@ -86,18 +86,5 @@ EOF
             echo "Updating Glue job: $JOB_NAME"
             aws glue update-job \
               --job-name "$JOB_NAME" \
-              --job-update file://job-config.json \
-              --region "$AWS_REGION"
-          else
-            echo "Creating Glue job: $JOB_NAME"
-            aws glue create-job \
-              --name "$JOB_NAME" \
-              --role "$GLUE_ROLE_ARN" \
-              --command "Name=glueetl,ScriptLocation=${SCRIPT_S3_PATH},PythonVersion=3" \
-              --execution-property "MaxConcurrentRuns=1" \
-              --max-retries 0 \
-              --glue-version "3.0" \
-              --number-of-workers 2 \
-              --worker-type G.1X \
-              --region "$AWS_REGION"
+              --job-update
  
