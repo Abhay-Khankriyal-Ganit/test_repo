@@ -106,9 +106,9 @@ jobs:
 
           echo "Script path: $SCRIPT_S3_PATH"
  
-# cat block must start at column 0
+          # Build job definition using safe indented here-document
 
-cat > job-config.json <<EOF
+          cat <<EOF > job-config.json
 
 {
 
