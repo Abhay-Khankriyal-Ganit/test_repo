@@ -63,7 +63,7 @@ jobs:
           echo "Script path: $SCRIPT_S3_PATH"
 
           # Build job definition
-          cat > job-config.json <<EOF
+cat > job-config.json <<EOF
 {
   "Role": "${GLUE_ROLE_ARN}",
   "Command": {
@@ -100,5 +100,4 @@ EOF
               --number-of-workers 2 \
               --worker-type G.1X \
               --region "$AWS_REGION"
-          fi
  
