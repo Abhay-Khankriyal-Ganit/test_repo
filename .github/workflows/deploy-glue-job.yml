@@ -1,4 +1,4 @@
-name: Update Glue Job
+name: Update or Create Glue Jobs
 
 on:
   push:
@@ -6,14 +6,32 @@ on:
       - main
 
 jobs:
-  update-glue-job:
+  discover-jobs:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - id: set-matrix
+        run: |
+          # Extract job names from Python files in glue_jobs/
+          jobs=$(ls glue_jobs/*.py | xargs -n1 basename | sed 's/\.py$//' | jq -R -s -c 'split("\n")[:-1]')
+          echo "matrix={\"job\": $jobs}" >> $GITHUB_OUTPUT
+
+  update-or-create-glue-job:
+    needs: discover-jobs
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix: ${{ fromJson(needs.discover-jobs.outputs.matrix) }}
 
     env:
       GLUE_ROLE_ARN: ${{ secrets.GLUE_ROLE_ARN }}
-      GLUE_JOB_NAME: glue-job
-      SCRIPT_S3_PATH: s3://glue-job-scripts-test-abhay/glue-scripts/glue-job/${{ github.run_id }}-job.py
       AWS_REGION: ap-south-1
+      S3_BUCKET: glue-job-scripts-test-abhay
+      SCRIPT_PREFIX: glue-scripts/glue-job/
 
     steps:
       - name: Checkout repository
@@ -26,30 +44,63 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Upload Glue script to S3
+      - name: Ensure S3 bucket exists
         run: |
-          aws s3 cp glue_jobs/my_etl_job.py "$SCRIPT_S3_PATH"
+          if ! aws s3 ls "s3://${S3_BUCKET}" 2>/dev/null; then
+            echo "S3 bucket ${S3_BUCKET} does not exist. Creating..."
+            aws s3 mb "s3://${S3_BUCKET}" --region "${AWS_REGION}"
+          else
+            echo "S3 bucket ${S3_BUCKET} already exists."
+          fi
 
-      - name: Build job update JSON
+      - name: Sync Glue scripts to S3
         run: |
-          echo '{
-            "Role": "'"${GLUE_ROLE_ARN}"'",
+          aws s3 sync glue_jobs/ "s3://${S3_BUCKET}/${SCRIPT_PREFIX}${{ github.run_id }}/"
+
+      - name: Create or Update Glue job
+        run: |
+          JOB_NAME="${{ matrix.job }}"
+          SCRIPT_S3_PATH="s3://${S3_BUCKET}/${SCRIPT_PREFIX}${{ github.run_id }}/${JOB_NAME}.py"
+
+          echo "Processing Glue job: $JOB_NAME"
+          echo "Script path: $SCRIPT_S3_PATH"
+
+          # Build job definition
+          cat > job-config.json <<EOF
+          {
+            "Role": "${GLUE_ROLE_ARN}",
             "Command": {
               "Name": "glueetl",
-              "ScriptLocation": "'"${SCRIPT_S3_PATH}"'",
+              "ScriptLocation": "${SCRIPT_S3_PATH}",
               "PythonVersion": "3"
-            }
-          }' > job-update.json
+            },
+            "ExecutionProperty": {
+              "MaxConcurrentRuns": 1
+            },
+            "MaxRetries": 0,
+            "GlueVersion": "3.0",
+            "NumberOfWorkers": 2,
+            "WorkerType": "G.1X"
+          }
+EOF
 
-      - name: Debug - show job-update.json content
-        run: cat job-update.json
-
-      - name: Debug - show AWS identity
-        run: aws sts get-caller-identity
-
-      - name: Update Glue job
-        run: |
-          aws glue update-job \
-            --job-name "$GLUE_JOB_NAME" \
-            --job-update file://job-update.json \
-            --region "$AWS_REGION"
+          # Check if job exists
+          if aws glue get-job --job-name "$JOB_NAME" >/dev/null 2>&1; then
+            echo "Updating Glue job: $JOB_NAME"
+            aws glue update-job \
+              --job-name "$JOB_NAME" \
+              --job-update file://job-config.json \
+              --region "$AWS_REGION"
+          else
+            echo "Creating Glue job: $JOB_NAME"
+            aws glue create-job \
+              --name "$JOB_NAME" \
+              --role "$GLUE_ROLE_ARN" \
+              --command "Name=glueetl,ScriptLocation=${SCRIPT_S3_PATH},PythonVersion=3" \
+              --execution-property "MaxConcurrentRuns=1" \
+              --max-retries 0 \
+              --glue-version "3.0" \
+              --number-of-workers 2 \
+              --worker-type G.1X \
+              --region "$AWS_REGION"
+          fi
