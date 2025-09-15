@@ -1,73 +1,65 @@
-name: Deploy Glue Jobs
+- name: Create or Update Glue Jobs
+
+  run: |
+
+    S3_PATH="s3://${S3_BUCKET}/${SCRIPT_PREFIX}${RUN_ID}/"
+
+    for JOB_FILE in glue_jobs/*.py; do
+
+      JOB_NAME=$(basename "$JOB_FILE" .py)
+
+      SCRIPT_S3_PATH="${S3_PATH}${JOB_NAME}.py"
+
+      echo "Processing Glue job: $JOB_NAME"
  
-on:
-  push:
-    branches:
-      - main
- 
-jobs:
-  deploy-glue:
-    runs-on: ubuntu-latest
-    env:
-      AWS_REGION: ap-south-1
-      S3_BUCKET: glue-job-scripts-test-abhay
-      SCRIPT_PREFIX: glue-scripts/my-new-folder/
-      GLUE_ROLE_ARN: arn:aws:iam::123456789012:role/MyGlueRole  # Replace with your IAM role ARN
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
- 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
- 
-      - name: Set RUN_ID
-        run: echo "RUN_ID=$(date +%s)" >> $GITHUB_ENV
- 
-      - name: Sync Glue scripts to S3
-        run: |
-          if [ ! -d "glue_jobs" ]; then
-            echo "ERROR: glue_jobs/ directory does not exist!"
-            exit 1
-          fi
-          S3_PATH="s3://${S3_BUCKET}/${SCRIPT_PREFIX}${RUN_ID}/"
-          echo "Syncing glue_jobs/ to $S3_PATH"
-          aws s3 sync glue_jobs/ "$S3_PATH" --exact-timestamps
- 
-      - name: Create or Update Glue Jobs
-        run: |
-          S3_PATH="s3://${S3_BUCKET}/${SCRIPT_PREFIX}${RUN_ID}/"
-          for JOB_FILE in glue_jobs/*.py; do
-              JOB_NAME=$(basename "$JOB_FILE" .py)
-              SCRIPT_S3_PATH="${S3_PATH}${JOB_NAME}.py"
-              echo "Processing Glue job: $JOB_NAME"
- 
-              # Prepare minimal valid config
-              cat <<EOL > job-config.json
+      # Prepare minimal valid config
+
+      cat <<EOL > job-config.json
+
 {
+
   "Name": "${JOB_NAME}",
+
   "Role": "${GLUE_ROLE_ARN}",
+
   "Command": {
+
     "Name": "glueetl",
+
     "ScriptLocation": "${SCRIPT_S3_PATH}",
+
     "PythonVersion": "3"
+
   },
+
   "MaxRetries": 0,
+
   "GlueVersion": "3.0",
+
   "NumberOfWorkers": 2,
+
   "WorkerType": "Standard"
+
 }
+
 EOL
  
-              # Create or update
-              if aws glue get-job --job-name "$JOB_NAME" >/dev/null 2>&1; then
-                  echo "Updating Glue job: $JOB_NAME"
-                  aws glue update-job --job-name "$JOB_NAME" --job-update file://job-config.json
-              else
-                  echo "Creating Glue job: $JOB_NAME"
-                  aws glue create-job --cli-input-json file://job-config.json
-              fi
-          done
+      # Create or update
+
+      if aws glue get-job --job-name "$JOB_NAME" >/dev/null 2>&1; then
+
+        echo "Updating Glue job: $JOB_NAME"
+
+        aws glue update-job --job-name "$JOB_NAME" --job-update file://job-config.json
+
+      else
+
+        echo "Creating Glue job: $JOB_NAME"
+
+        aws glue create-job --cli-input-json file://job-config.json
+
+      fi
+
+    done
+
+ 
