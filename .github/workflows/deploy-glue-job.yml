@@ -1,10 +1,9 @@
 name: Update or Create Glue Jobs
- 
 on:
   push:
     branches:
       - main
- 
+
 jobs:
   discover-jobs:
     runs-on: ubuntu-latest
@@ -13,17 +12,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
- 
+
       - id: set-matrix
         run: |
           # Extract job names from Python files in glue_jobs/
           jobs=$(ls glue_jobs/*.py | xargs -n1 basename | sed 's/\.py$//' | jq -R -s -c 'split("\n")[:-1]')
           echo "matrix={\"job\": $jobs}" >> $GITHUB_OUTPUT
- 
+
       - name: Debug matrix
         run: |
           echo "Matrix: ${{ steps.set-matrix.outputs.matrix }}"
- 
+
   update-or-create-glue-job:
     needs: discover-jobs
     runs-on: ubuntu-latest
@@ -37,14 +36,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
- 
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
- 
+
       - name: Ensure S3 bucket exists
         run: |
           if ! aws s3 ls "s3://${S3_BUCKET}" 2>/dev/null; then
@@ -53,33 +52,44 @@ jobs:
           else
             echo "S3 bucket ${S3_BUCKET} already exists."
           fi
- 
+
       - name: Sync Glue scripts to S3
         run: |
           aws s3 sync glue_jobs/ "s3://${S3_BUCKET}/${SCRIPT_PREFIX}${{ github.run_id }}/"
- 
+
       - name: Create or Update Glue job
         run: |
           JOB_NAME="${{ matrix.job }}"
           SCRIPT_S3_PATH="s3://${S3_BUCKET}/${SCRIPT_PREFIX}${{ github.run_id }}/${JOB_NAME}.py"
- 
           echo "Processing Glue job: $JOB_NAME"
           echo "Script path: $SCRIPT_S3_PATH"
- 
+
           # Try to find template in possible locations
           if [ -f "glue_jobs/job-config-template.json" ]; then
             TEMPLATE_PATH="glue_jobs/job-config-template.json"
           elif [ -f "job-config-template.json" ]; then
             TEMPLATE_PATH="job-config-template.json"
           else
-            echo "ERROR: job-config-template.json not found in repo"
-            exit 1
+            echo "WARNING: job-config-template.json not found in repo. Using default config."
+            echo '{}' > job-config.json
+            TEMPLATE_PATH="job-config.json"
           fi
- 
+
           # Copy template and replace variables
-          cp "$TEMPLATE_PATH" job-config.json
+          cp "$TEMPLATE_PATH" job-config.json || echo "Using default config"
           sed -i "s|\${GLUE_ROLE_ARN}|${GLUE_ROLE_ARN}|g" job-config.json
           sed -i "s|\${SCRIPT_S3_PATH}|${SCRIPT_S3_PATH}|g" job-config.json
+
+          # Check if Glue job exists
+          if aws glue get-job --job-name "$JOB_NAME" >/dev/null 2>&1; then
+            echo "Updating existing Glue job: $JOB_NAME"
+            aws glue update-job \
+              --job-name "$JOB_NAME" \
+              --job-update file://job-config.json
+          else
+            echo "Creating new Glue job: $JOB_NAME"
+            aws glue create-job \
+              --name "$JOB_NAME" \
+              --cli-input-json file://job-config.json
+          fi
  
-          # Check if job exists
-          if aws glue ge
