@@ -10,10 +10,10 @@ jobs:
   deploy-glue:
     runs-on: ubuntu-latest
     env:
-      AWS_REGION: ap-south-1
-      S3_BUCKET: glue-job-scripts-test-abhay
-      SCRIPT_PREFIX: glue-scripts/
-      GLUE_ROLE_ARN: arn:aws:iam::395616638160:role/AWSGlueServiceRole-glue-job
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      SCRIPT_PREFIX: ${{ secrets.SCRIPT_PREFIX }}
+      GLUE_ROLE_ARN: ${{ secrets.GLUE_ROLE_ARN }}
 
     steps:
       - name: Checkout repository
